@@ -40,20 +40,18 @@ export default function App() {
   const analyze = async () => {
     setLoading(true); setError(null); setResult(null);
     try {
-      const body = imageBase64
-        ? { imageBase64 }
-        : { imageUrl: url.trim() };
-
+      const body = imageBase64 ? { imageBase64 } : { imageUrl: url.trim() };
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
       const data = await res.json();
-      const text = data.content?.map(b => b.text || "").join("") || "";
-      setResult(JSON.parse(text.replace(/```json|```/g, "").trim()));
+      if (data.error) throw new Error(data.error);
+      const clean = data.text.replace(/```json|```/g, "").trim();
+      setResult(JSON.parse(clean));
     } catch (err) {
-      setError("Error al analizar. Inténtalo de nuevo.");
+      setError(`Error: ${err.message}`);
     }
     setLoading(false);
   };
@@ -61,7 +59,6 @@ export default function App() {
   const reset = () => { setImage(null); setImageBase64(null); setUrl(""); setResult(null); setError(null); };
 
   const s = {
-    wrap: { maxWidth: 680, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui, sans-serif" },
     label: { fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#999", margin: "0 0 6px", display: "block" },
     tag: { fontSize: 12, padding: "4px 12px", background: "#f5f5f5", borderRadius: 20, color: "#666", border: "1px solid #eee", display: "inline-block", margin: "4px 4px 0 0" },
     card: { background: "#fff", border: "1px solid #eee", borderRadius: 12, padding: "1.25rem", marginBottom: "1.5rem" },
@@ -82,7 +79,7 @@ export default function App() {
   };
 
   return (
-    <div style={s.wrap}>
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "2rem 1rem" }}>
       <span style={s.label}>Análisis fotográfico</span>
       <h1 style={{ fontSize: 26, fontWeight: 500, margin: "0 0 2rem" }}>Lente curatorial</h1>
 
@@ -105,7 +102,7 @@ export default function App() {
             <div style={{ textAlign: "center", padding: "3rem 1rem", background: "#f9f9f9", borderRadius: 12, marginBottom: "1.5rem" }}>
               <p style={{ fontSize: 14, color: "#666", margin: "0 0 1.5rem" }}>Selecciona una foto desde tu dispositivo</p>
               <Btn label="Elegir foto" htmlFor="file-input" />
-              <input id="file-input" type="file" accept="image/*" onChange={e => { if (e.target.files?.[0]) processFile(e.target.files[0]); }} />
+              <input id="file-input" type="file" accept="image/*" style={{ display: "none" }} onChange={e => { if (e.target.files?.[0]) processFile(e.target.files[0]); }} />
             </div>
           )}
 
@@ -168,4 +165,4 @@ export default function App() {
       )}
     </div>
   );
-}
+        }
