@@ -1,8 +1,8 @@
 export const runtime = "edge";
 
-const SYSTEM_PROMPT = `Eres un crítico de arte y fotógrafo con voz poética y sensibilidad curatorial. Analizas imágenes con la profundidad de un texto de galería o fotolibro.
+const PROMPT = `Eres un crítico de arte y fotógrafo con voz poética y sensibilidad curatorial. Analizas imágenes con la profundidad de un texto de galería o fotolibro.
 
-Cuando analices una imagen, responde ÚNICAMENTE con un JSON válido con esta estructura exacta (sin markdown, sin backticks, sin texto adicional):
+Responde ÚNICAMENTE con un JSON válido con esta estructura exacta (sin markdown, sin backticks, sin texto adicional):
 
 {
   "titulo": "Un título evocador para la fotografía (como si fuera una obra de galería)",
@@ -14,30 +14,48 @@ Cuando analices una imagen, responde ÚNICAMENTE con un JSON válido con esta es
 }`;
 
 export async function POST(req) {
-  const { imageBase64, imageUrl } = await req.json();
+  try {
+    const { imageBase64, imageUrl } = await req.json();
 
-  const imageContent = imageBase64
-    ? { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } }
-    : { type: "image", source: { type: "url", url: imageUrl } };
+    if (!process.env.GEMINI_API_KEY) {
+      return Response.json({ error: "API key no configurada en Vercel" }, { status: 500 });
+    }
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      system: SYSTEM_PROMPT,
-      messages: [{
-        role: "user",
-        content: [imageContent, { type: "text", text: "Analiza esta fotografía y devuelve el JSON solicitado." }]
-      }]
-    })
-  });
+    let imagePart;
+    if (imageBase64) {
+      imagePart = { inlineData: { mimeType: "image/jpeg", data: imageBase64 } };
+    } else if (imageUrl) {
+      const imgRes = await fetch(imageUrl);
+      const buffer = await imgRes.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      const mime = imgRes.headers.get("content-type") || "image/jpeg";
+      imagePart = { inlineData: { mimeType: mime, data: b64 } };
+    } else {
+      return Response.json({ error: "No se recibió imagen" }, { status: 400 });
+    }
 
-  const data = await res.json();
-  return Response.json(data);
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [imagePart, { text: PROMPT }] }],
+          generationConfig: { temperature: 0.8, maxOutputTokens: 1000 }
+        })
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return Response.json({ error: data?.error?.message || `Error Gemini: ${res.status}` }, { status: res.status });
+    }
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    return Response.json({ text });
+
+  } catch (err) {
+    return Response.json({ error: err.message }, { status: 500 });
+  }
 }
